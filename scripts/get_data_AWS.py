@@ -55,8 +55,9 @@ def get_data_AWS(
     df = get_module_vs_ambient_diff_c(df)
 
     # Plot
-    fig, ax = plot_df_pred_true(df, y_true, y_pred, n_points_all=True)
-    ax.set_title(dataset)
+    if plot_bool:
+        fig, ax = plot_df_pred_true(df, y_true, y_pred, n_points_all=True)
+        ax.set_title(dataset)
 
     return df, y_true, y_pred
 
