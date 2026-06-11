@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-#  vim: set ts=4 sts=4 sw=4 expandtab tw=0 foldcolumn=6 foldmethod=indent :
+#  vim: set ts=4 sts=4 sw=4 expandtab tw=0 foldcolumn=4 foldmethod=indent :
 
 """
 Production note:
