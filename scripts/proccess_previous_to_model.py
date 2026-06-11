@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 
-#  vim: set ts=4 sts=4 sw=4 expandtab tw=0 foldcolumn=6 foldmethod=indent :
+#  vim: set ts=4 sts=4 sw=4 expandtab tw=0 foldcolumn=4 foldmethod=indent :
 
 import numpy as np
 import pandas as pd
@@ -152,8 +152,8 @@ def save_dataset_bundle(
         "split_strategy": "month_stratified_80_20",
         "filters": {
             "poa_irradiance_wm2_min": MIN_POA_WM2,
-            "total_inverter_ac_power_kw_min": 0,
-            "total_inverter_ac_power_kw_max": MAX_POWER_KW,
+            TARGET + "_min": 0,
+            TARGET + "_max": MAX_POWER_KW,
             "ambient_temperature_c_min": MIN_AMBIENT_TEMP_C,
             "ambient_temperature_c_max": MAX_AMBIENT_TEMP_C,
             "module_temperature_c_min": MIN_MODULE_TEMP_C,
@@ -172,7 +172,19 @@ def save_dataset_bundle(
     return train_df, test_df
 
 
-def proccess_previous_to_model(df):
+def proccess_previous_to_model_fit(df):
+    df["timestamp"] = pd.to_datetime(df["timestamp"])
+    df = add_time_features(df)
+
+    df[TARGET] = df["inverter_1_ac_power_kw"] + df["inverter_2_ac_power_kw"]
+
+    # Drop rows with NaN
+    df.dropna(subset=[TARGET], inplace=True)
+
+    return df
+
+
+def proccess_previous_to_model(df, scaler=None):
 
     # str to datetime
     df["timestamp"] = pd.to_datetime(df["timestamp"])
@@ -185,21 +197,41 @@ def proccess_previous_to_model(df):
 
     df = get_module_vs_ambient_diff_c(df)
 
+    # Escalar todas las columnas excepto "timestamp"
+    if scaler is not None:
+        df, scaler = apply_scaler(df, scaler)
+
+    train_df, test_df = get_train_test_dfs(df)
+
+    return df, train_df, test_df
+
+
+def apply_scaler(df, scaler, columns_to_scale=None):
+    if scaler is not None:
+        if columns_to_scale is None:
+            columns_to_scale = df.columns
+        # Filter columns
+        columns_to_scale = [
+            col for col in columns_to_scale if col != "timestamp" and col != TARGET
+        ]
+
+        if hasattr(scaler, "fit_transform") and not hasattr(scaler, "mean_"):
+            # 1st time: fit & transform
+            df[columns_to_scale] = scaler.fit_transform(df[columns_to_scale])
+        else:
+            # If already trained: transform
+            df[columns_to_scale] = scaler.transform(df[columns_to_scale])
+    else:
+        print("No scaler passed!")
+    return df, scaler
+
+
+def get_train_test_dfs(df, test_size=0.2):
     train_df, test_df = month_stratified_split(
         df=df, test_size=0.2, random_state=RANDOM_STATE
     )
 
     train_df = get_df_for_model(train_df)
     test_df = get_df_for_model(test_df)
-    return df, train_df, test_df
 
-
-def proccess_previous_to_model_fit(df):
-    df["timestamp"] = pd.to_datetime(df["timestamp"])
-    df = add_time_features(df)
-
-    df["total_inverter_ac_power_kw"] = (
-        df["inverter_1_ac_power_kw"] + df["inverter_2_ac_power_kw"]
-    )
-
-    return df
+    return train_df, test_df
