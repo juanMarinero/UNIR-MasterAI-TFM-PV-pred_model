@@ -1,13 +1,15 @@
 #!/usr/bin/env python3
 
-#  vim: set ts=4 sts=4 sw=4 expandtab tw=0 foldcolumn=6 foldmethod=indent :
+#  vim: set ts=4 sts=4 sw=4 expandtab tw=0 foldcolumn=4 foldmethod=indent :
 
 import numpy as np
 import pandas as pd
-import matplotlib.pyplot as plt
+
+TARGET = "total_inverter_ac_power_kw"
+MIN_POA_WM2 = 50
 
 
-def load_model(model_path="models/random_forest_model.pkl"):
+def load_model(model_path="models/random_forest_model.pkl", dbg=True):
 
     import pickle
 
@@ -15,26 +17,28 @@ def load_model(model_path="models/random_forest_model.pkl"):
     with open(model_path, "rb") as file:
         loaded_model = pickle.load(file)
 
-    print("Modelo cargado exitosamente")
+    if dbg:
+        print("Modelo cargado exitosamente")
 
-    # Verificar que funciona
-    print(f"Tipo de modelo: {type(loaded_model)}")
-    print(f"Features esperadas: {loaded_model.feature_names_in_}")
+        # Verificar que funciona
+        print(f"Tipo de modelo: {type(loaded_model)}")
+        print(f"Features esperadas: {loaded_model.feature_names_in_}")
 
     return loaded_model
 
 
-TARGET = "total_inverter_ac_power_kw"
-
-
 def get_data_AWS(
-    dataset="dataset/pvdt_9068_2025_04_curated_all_cols.csv", plot_bool=False
+    dataset="dataset/pvdt_9068_2025_04_curated_all_cols.csv",
+    model_path="models/random_forest_model.pkl",
+    plot_bool=False,
+    row_start=0,
+    row_end=None,
 ):
 
-    model = load_model()
-
+    # Load data
     df = pd.read_csv(dataset)
 
+    # Imports
     from scripts.proccess_previous_to_model import (
         proccess_previous_to_model_fit,
         get_df_for_model,
@@ -42,113 +46,52 @@ def get_data_AWS(
         get_module_vs_ambient_diff_c,
     )
 
+    # Preprocess
     df = proccess_previous_to_model_fit(df)
+
+    # Filter rows
+    if row_end and row_end <= len(df):
+        df = df[int(row_start) : int(row_end)]
+
+    # Filter columns
     df_to_fit = get_df_for_model(df)
 
+    # Get predictions
     y_true = df_to_fit[TARGET]
+    n_nans = y_true.isna().sum()
+    if n_nans > 0:
+        print(
+            f"Se encontraron {n_nans} valores nulos en la columna {TARGET}. Se reemplazan con 0.0."
+        )
+        y_true = y_true.fillna(0.0)  # Reemplazar NaN con 0.0
+
+    # Get predictions
+    model = load_model(model_path, dbg=False)
     df_to_fit.drop(columns=TARGET, inplace=True)
     df_to_fit = df_to_fit[model.feature_names_in_]
     y_pred = model.predict(df_to_fit)
 
-    # Dashboard adicionales
+    # Clip negative predictions
+    y_pred = np.clip(y_pred, 0, None)
+
+    # Clip if low irradiance
+    mask_irradiance = df["poa_irradiance_wm2"] < MIN_POA_WM2
+    y_pred[mask_irradiance] = 0.0
+
+    # Dashboard fields
     df = get_power_per_irradiance(df)
     df = get_module_vs_ambient_diff_c(df)
 
     # Plot
+    MAE, MAPE = np.nan, np.nan
+    # Get timestamps start and end
+    timestamps_range = [df["timestamp"].iloc[0], df["timestamp"].iloc[-1]]
     if plot_bool:
-        fig, ax = plot_df_pred_true(df, y_true, y_pred, n_points_all=True)
-        ax.set_title(dataset)
+        from scripts.utils import plot_df_pred_true
 
-    return df, y_true, y_pred
+        fig, ax1, *_, MAE, MAPE, timestamps_range = plot_df_pred_true(
+            df, y_true, y_pred, all_points_bool=True
+        )
+        # ax1.set_title(dataset)
 
-
-def plot_df_pred_true(df, y_true, y_pred, n_points_all=False):
-
-    fig, ax1 = plt.subplots(figsize=(15, 6))
-
-    # Usar timestamps como x
-    timestamps = df["timestamp"] if "timestamp" in df.columns else df.index
-    x_vals = timestamps if isinstance(timestamps, pd.Series) else np.arange(len(y_true))
-
-    # Calcular errores
-    errors = np.abs(y_true - y_pred)
-    error_percentage = (errors / (y_true + 1e-6)) * 100
-
-    # Muestreo
-    n_points = len(y_true)
-    if not n_points_all:
-        sample_rate = max(1, n_points // 500)
-    else:
-        sample_rate = 1
-
-    x_sample = x_vals[::sample_rate]
-    y_true_sample = y_true[::sample_rate]
-    y_pred_sample = y_pred[::sample_rate]
-    errors_sample = errors[::sample_rate]
-    error_percentage_sample = error_percentage[::sample_rate]
-
-    # Eje primario: Valores reales y predicciones CON barras de error
-    ax1.errorbar(
-        x_sample,
-        y_pred_sample,
-        yerr=errors_sample,
-        fmt="o",
-        capsize=2,
-        alpha=0.6,
-        markersize=3,
-        label="Predicción ± error",
-        color="blue",
-        ecolor="lightgray",
-    )
-
-    ax1.plot(
-        x_sample,
-        y_true_sample,
-        "r-",
-        alpha=0.7,
-        linewidth=1.5,
-        label="Valor Real",
-        marker="o",
-        markersize=2,
-    )
-
-    ax1.set_xlabel("Timestamp")
-    ax1.set_ylabel("Potencia (kW)", color="black")
-    ax1.tick_params(axis="y", labelcolor="black")
-    ax1.legend(loc="upper left")
-    ax1.grid(True, alpha=0.3)
-
-    # Eje secundario: Error porcentual
-    ax2 = ax1.twinx()
-    ax2.plot(
-        x_sample,
-        error_percentage_sample,
-        "g-",
-        alpha=0.6,
-        linewidth=1,
-        marker="^",
-        markersize=2,
-        label="Error %",
-    )
-    ax2.set_ylabel("Error Porcentual (%)", color="green")
-    ax2.tick_params(axis="y", labelcolor="green")
-    ax2.legend(loc="upper right")
-
-    # Línea de referencia en 0% para el error
-    ax2.axhline(y=0, color="green", linestyle="--", alpha=0.3)
-
-    ax1.set_title(
-        "Predicciones vs Valores Reales con Error Porcentual en Eje Secundario"
-    )
-
-    if "timestamp" in str(type(x_vals)):
-        plt.xticks(rotation=45)
-
-    plt.tight_layout()
-
-    # Estadísticas del error
-    print(f"Error absoluto medio: {np.mean(errors):.3f} kW")
-    print(f"Error porcentual medio: {np.mean(error_percentage):.2f}%")
-    print(f"Desviación estándar del error: {np.std(errors):.3f} kW")
-
-    return fig, ax1
+    return df, y_true, y_pred, MAE, MAPE, timestamps_range
