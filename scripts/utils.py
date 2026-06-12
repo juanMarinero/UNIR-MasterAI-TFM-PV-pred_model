@@ -361,3 +361,125 @@ def plot_hist_and_boxplot_error(y_true, y_pred, min_kW=10, bins=100, log=True):
 
     plt.tight_layout()
     plt.show()
+
+
+def plot_by_year(
+    df_tmp,
+    days_per_row=2,
+    twin_left_cols=[
+        "plant_ac_power_kw",
+        "inverter_1_ac_power_kw",
+        "inverter_2_ac_power_kw",
+    ],
+    twin_right_cols=[],
+):
+    df = df_tmp.copy()
+
+    # Ensure timestamp is datetime
+    df["timestamp"] = pd.to_datetime(df["timestamp"], format="%Y-%m-%d %H:%M:%S")
+    df["year"] = df["timestamp"].dt.year
+    df["date"] = df["timestamp"].dt.date
+
+    # Get unique years
+    years = sorted(df["year"].unique())
+
+    if len(years) == 1:
+        # Single year - plot each day
+        year = years[0]
+        df_plot = df[df["year"] == year]
+        groups = sorted(df_plot["date"].unique())
+        group_name = "date"
+        title_prefix = f"Day"
+        index_col = "hour"
+        n_cols = days_per_row
+    else:
+        # Multiple years - plot each year
+        df_plot = df
+        groups = years
+        group_name = "year"
+        title_prefix = f"Year"
+        index_col = "timestamp"
+        n_cols = 1
+
+    # Calculate grid
+    n_groups = len(groups)
+    n_rows = (n_groups + n_cols - 1) // n_cols
+
+    # Create subplots
+    fig, axes = plt.subplots(n_rows, n_cols, figsize=(12, 4 * n_rows))
+
+    # Handle single axis case
+    if n_groups == 1:
+        axes = np.array([axes])
+    axes = axes.flatten()
+
+    # Plot each group
+    for i, group in enumerate(groups):
+        if i >= len(axes):
+            break
+
+        if group_name == "date":
+            df_group = df_plot[df_plot["date"] == group]
+            title = f"{title_prefix} {group}"
+        else:
+            df_group = df_plot[df_plot["year"] == group]
+            title = f"{title_prefix} {group}"
+
+            # Plot left axis data
+        ax_left = axes[i]
+        df_group.set_index(index_col)[twin_left_cols].plot(
+            ax=ax_left,
+            marker=".",
+            markersize=1,
+            linewidth=0,
+            alpha=0.7,
+            legend=False,
+        )
+
+        ax_left.set_title(title)
+        ax_left.set_ylabel("Power (kW)")
+        ax_left.tick_params(axis="x", rotation=45)
+
+        # Create twinx for right axis if needed
+        if twin_right_cols:
+            ax_right = ax_left.twinx()
+
+            # Plot right axis data
+            df_group.set_index(index_col)[twin_right_cols].plot(
+                ax=ax_right,
+                marker="s",  # Square markers to distinguish
+                markersize=1,
+                linewidth=0,
+                alpha=0.7,
+                color=["gold", "purple", "red", "brown"][: len(twin_right_cols)],
+                legend=False,
+            )
+
+            ax_right.set_ylabel(", ".join(twin_right_cols))
+            ax_right.tick_params(axis="y", labelcolor="gold")
+
+            # Only add combined legend to the first plot
+            if i == 0:
+                lines_left, labels_left = ax_left.get_legend_handles_labels()
+                lines_right, labels_right = ax_right.get_legend_handles_labels()
+                ax_left.legend(
+                    lines_left + lines_right,
+                    labels_left + labels_right,
+                    loc="upper left",
+                    markerscale=10,
+                    fontsize=8,
+                )
+                ax_right.legend().set_visible(False)
+        else:
+            # Only add legend to the first plot
+            if i == 0:
+                ax_left.legend(markerscale=10, fontsize=8)
+            else:
+                ax_left.legend().set_visible(False)  # Hide legend for other plots
+
+    # Hide unused subplots
+    for i in range(n_groups, len(axes)):
+        axes[i].set_visible(False)
+
+    plt.tight_layout()
+    plt.show()
