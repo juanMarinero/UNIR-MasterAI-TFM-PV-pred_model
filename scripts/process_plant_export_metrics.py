@@ -80,7 +80,7 @@ def process_plant_export_metrics(
     # Apply filtering criteria
     filter_conditions = (
         (df["poa_irradiance_wm2"].notna())
-        & (df["poa_irradiance_wm2"] > min_poa_wm2)
+        & (df["poa_irradiance_wm2"] >= min_poa_wm2)
         & (df[target].notna())
         & (df[target] >= 0)
     )
