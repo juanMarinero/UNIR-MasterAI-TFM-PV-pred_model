@@ -321,3 +321,43 @@ def plot_df_pred_true(df, y_true, y_pred, all_points_bool=False):
     )
 
     return fig, ax1, ax2, ax3, ax4, MAE, MAPE, timestamps_range
+
+
+def plot_hist_and_boxplot_error(y_true, y_pred, min_kW=10, bins=100, log=True):
+    # Get abs errors
+    errors = np.abs(y_true - y_pred)
+
+    # Filter
+    mask = y_true > min_kW  # some kW
+    errors = errors[mask]
+
+    # Plot
+    plt.figure(figsize=(12, 5))
+    plt.suptitle(f"Error histogram and boxplot\nFiltered for 'y_true' > {min_kW} kW")
+
+    # Hist
+    plt.subplot(1, 2, 1)
+    plt.hist(errors, bins=bins, log=log)
+    plt.xlabel("|Error| (kW)")
+    plt.ylabel("Frequency")
+
+    # Boxplot
+    plt.subplot(1, 2, 2)
+    plt.boxplot(
+        errors,
+        vert=True,
+        patch_artist=True,
+        showmeans=True,
+        boxprops=dict(facecolor="steelblue", alpha=0.7),
+        medianprops=dict(color="red", linewidth=2),
+        whiskerprops=dict(linewidth=1.5),
+        capprops=dict(linewidth=1.5),
+        flierprops=dict(marker="o", markersize=3, alpha=0.5),
+    )
+    plt.yscale("log")  # log scale
+    plt.ylabel("|Error| (kW)")
+    plt.xticks([])  # Empty list removes ticks
+    plt.grid(True, alpha=0.3, axis="y")
+
+    plt.tight_layout()
+    plt.show()
