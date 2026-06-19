@@ -22,9 +22,7 @@ source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-???<br>
-Downlaod the dataset from https://drive.google.com/drive/folders/???????? and put it in `./dataset_noGit/`.
-???<br>
+Downlaod the dataset via `cd scripts && python build_pvdt_dataset.py` (to run `process_all_months` function).
 
 ## Run the notebook
 

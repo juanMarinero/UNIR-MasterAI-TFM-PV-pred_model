@@ -1051,7 +1051,7 @@ if __name__ == "__main__":
         main_2025_01()
 
     # Special month with no data
-    if True:
+    if False:
         main_2023_12()
 
     # Special month
@@ -1064,7 +1064,7 @@ if __name__ == "__main__":
         main_2024_03()
 
     # Process all months from 2017-01-01 to 2025-04-30
-    if False:
+    if True:
         process_all_months(
             save_to_csv=True, DBG=False
         )  # Set DBG=False to avoid too much output
